@@ -9,6 +9,7 @@ from src.database import get_db, init_db, close_db
 from src.exceptions import TermoneException
 from src.schemas import HealthCheckResponse
 from src.api.hosts import router as hosts_router
+from src.api.terminal import router as terminal_router
 
 settings = get_settings()
 
@@ -30,6 +31,7 @@ app.add_middleware(
 
 # Include API routers
 app.include_router(hosts_router, prefix="/api", tags=["hosts"])
+app.include_router(terminal_router, prefix="/api", tags=["terminal"])
 
 
 # Exception handlers
