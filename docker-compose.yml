@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: termone-postgres
+    environment:
+      POSTGRES_USER: termone_user
+      POSTGRES_PASSWORD: termone_password
+      POSTGRES_DB: termone_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U termone_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - termone-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: termone-backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://termone_user:termone_password@postgres:5432/termone_db
+      BACKEND_HOST: 0.0.0.0
+      BACKEND_PORT: 8000
+      ENCRYPTION_MASTER_KEY: ${ENCRYPTION_MASTER_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      DEBUG: ${DEBUG:-false}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/tests:/app/tests
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - termone-network
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: termone-frontend
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+    depends_on:
+      - backend
+    networks:
+      - termone-network
+    command: npm run dev
+
+  nginx:
+    image: nginx:alpine
+    container_name: termone-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - termone-network
+
+volumes:
+  postgres_data:
+
+networks:
+  termone-network:
+    driver: bridge

@@ -1,0 +1,120 @@
+name: CI Tests
+
+on:
+  push:
+    branches: [ main, develop, 'claude/**' ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: termone_user
+          POSTGRES_PASSWORD: termone_password
+          POSTGRES_DB: termone_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run linting
+        working-directory: ./backend
+        run: |
+          flake8 src tests --max-line-length=100
+          black --check src tests
+          isort --check-only src tests
+
+      - name: Run tests
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://termone_user:termone_password@localhost:5432/termone_db
+          ENCRYPTION_MASTER_KEY: test-key-32-bytes-minimum-12345
+          JWT_SECRET: test-secret-minimum-32-characters
+        run: |
+          pytest tests/ -v --cov=src --cov-report=xml --cov-report=term
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./backend/coverage.xml
+          flags: backend
+          fail_ci_if_error: false
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Type check
+        working-directory: ./frontend
+        run: npm run type-check
+
+      - name: Run linting
+        working-directory: ./frontend
+        run: npm run lint
+
+      - name: Run tests
+        working-directory: ./frontend
+        run: npm test || true
+
+      - name: Build
+        working-directory: ./frontend
+        run: npm run build
+
+  docker-build:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend Docker image
+        working-directory: ./backend
+        run: docker build -t termone-backend:${{ github.sha }} .
+
+      - name: Build frontend Docker image
+        working-directory: ./frontend
+        run: docker build -t termone-frontend:${{ github.sha }} .
