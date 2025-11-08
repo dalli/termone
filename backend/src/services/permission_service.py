@@ -4,7 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from src.models.user import User
-from src.exceptions import AuthorizationException
+from src.models.infrastructure import SSHHost
+from src.exceptions import AuthorizationException, PermissionException, NotFoundException
 
 
 class PermissionService:
@@ -57,6 +58,59 @@ class PermissionService:
 
         if not user or not user.is_admin:
             raise AuthorizationException("Admin access required")
+
+        return True
+
+    async def check_host_access(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        host_id: str,
+        action: str = "read",
+    ) -> bool:
+        """
+        Check if user has access to a specific host.
+
+        Args:
+            db: Database session
+            user_id: User ID
+            host_id: Host ID
+            action: Action (read, write, delete)
+
+        Returns:
+            True if user has access, raises exception otherwise
+
+        Raises:
+            NotFoundException: If host not found
+            PermissionException: If user doesn't have access
+        """
+        # Get the host
+        stmt = select(SSHHost).where(SSHHost.id == host_id)
+        result = await db.execute(stmt)
+        host = result.scalar_one_or_none()
+
+        if not host:
+            raise NotFoundException(resource="Host", identifier=host_id)
+
+        # Check if user owns the host or is admin
+        user_stmt = select(User).where(User.id == user_id)
+        user_result = await db.execute(user_stmt)
+        user = user_result.scalar_one_or_none()
+
+        if not user:
+            raise NotFoundException(resource="User", identifier=user_id)
+
+        # Admin can access any host
+        if user.is_admin:
+            return True
+
+        # User must own the host
+        if host.created_by_user_id != user_id:
+            raise PermissionException(
+                resource="Host",
+                action=action,
+                reason="User does not own this host",
+            )
 
         return True
 
