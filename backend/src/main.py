@@ -11,6 +11,7 @@ from src.schemas import HealthCheckResponse
 from src.api.hosts import router as hosts_router
 from src.api.terminal import router as terminal_router
 from src.api.stats import router as stats_router
+from src.api.files import router as files_router
 
 settings = get_settings()
 
@@ -34,6 +35,7 @@ app.add_middleware(
 app.include_router(hosts_router, prefix="/api", tags=["hosts"])
 app.include_router(terminal_router, prefix="/api", tags=["terminal"])
 app.include_router(stats_router, prefix="/api", tags=["stats"])
+app.include_router(files_router, prefix="/api", tags=["files"])
 
 
 # Exception handlers
