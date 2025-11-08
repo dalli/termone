@@ -12,6 +12,7 @@ from src.api.hosts import router as hosts_router
 from src.api.terminal import router as terminal_router
 from src.api.stats import router as stats_router
 from src.api.files import router as files_router
+from src.api.tunnels import router as tunnels_router
 
 settings = get_settings()
 
@@ -36,6 +37,7 @@ app.include_router(hosts_router, prefix="/api", tags=["hosts"])
 app.include_router(terminal_router, prefix="/api", tags=["terminal"])
 app.include_router(stats_router, prefix="/api", tags=["stats"])
 app.include_router(files_router, prefix="/api", tags=["files"])
+app.include_router(tunnels_router, prefix="/api", tags=["tunnels"])
 
 
 # Exception handlers
