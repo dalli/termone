@@ -1,0 +1,1149 @@
+openapi: 3.0.3
+info:
+  title: Termone SSH Infrastructure Management API
+  description: |
+    Web-based SSH terminal, file management, tunneling, and server monitoring platform.
+
+    All endpoints require JWT authentication token in Authorization header.
+    Sensitive data (credentials, keys) never returned in responses.
+    All timestamps in ISO 8601 format (UTC).
+  version: 1.0.0
+  contact:
+    name: Termone Development Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://termone.example.com/api
+    description: Production API
+  - url: http://localhost:8000/api
+    description: Local development
+
+# Global security scheme
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "JWT token from /auth/login or /auth/oidc/callback. Format: 'Authorization: Bearer <token>'"
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          enum: [INVALID_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, CONFLICT, INTERNAL_SERVER_ERROR]
+          description: Machine-readable error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional error context
+
+    User:
+      type: object
+      required: [id, email, username]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+        first_name:
+          type: string
+          nullable: true
+        last_name:
+          type: string
+          nullable: true
+        is_admin:
+          type: boolean
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [Admin, User, ReadOnly]
+        created_at:
+          type: string
+          format: date-time
+        last_login_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    SSHHost:
+      type: object
+      required: [id, name, hostname, port]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: User-friendly name (unique per owner)
+        hostname:
+          type: string
+          description: FQDN or IP address
+        ip_address:
+          type: string
+          nullable: true
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          default: 22
+        username:
+          type: string
+          description: SSH login user
+          default: root
+        auth_type:
+          type: string
+          enum: [password, key]
+          description: Authentication method (never return plaintext)
+        tags:
+          type: array
+          items:
+            type: string
+          description: Organizational tags
+        folder_path:
+          type: string
+          description: Hierarchical folder path (e.g., 'prod/databases')
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        last_connected_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    SSHSession:
+      type: object
+      required: [id, user_id, ssh_host_id, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        ssh_host_id:
+          type: string
+          format: uuid
+        session_type:
+          type: string
+          enum: [terminal, sftp, tunnel]
+        status:
+          type: string
+          enum: [active, idle, closed]
+        ip_address:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        last_activity_at:
+          type: string
+          format: date-time
+
+    CommandSnippet:
+      type: object
+      required: [id, name, command]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Snippet name (unique per owner)
+        command:
+          type: string
+          description: Shell command to execute
+        description:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        is_public:
+          type: boolean
+          description: Shared with other users in organization
+        created_at:
+          type: string
+          format: date-time
+
+    SSHTunnel:
+      type: object
+      required: [id, name, tunnel_type, remote_port]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        tunnel_type:
+          type: string
+          enum: [local, remote]
+        local_address:
+          type: string
+          description: Only for local tunnels (e.g., 127.0.0.1)
+          nullable: true
+        local_port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          nullable: true
+        remote_address:
+          type: string
+          description: Target host/IP
+        remote_port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        status:
+          type: string
+          enum: [active, inactive, error]
+        status_message:
+          type: string
+          nullable: true
+        is_auto_reconnect:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ====================
+  # Authentication Endpoints
+  # ====================
+
+  /auth/login:
+    post:
+      summary: Local password-based login
+      tags: [Authentication]
+      security: []  # No auth required for login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: JWT access token (1 hour expiry)
+                  refresh_token:
+                    type: string
+                    description: Optional refresh token for extended sessions
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/oidc/login:
+    get:
+      summary: Initiate OIDC SSO login redirect
+      tags: [Authentication]
+      security: []
+      parameters:
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [google, okta, keycloak, github]
+            description: SSO provider
+      responses:
+        '302':
+          description: Redirect to provider's login page
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+
+  /auth/oidc/callback:
+    get:
+      summary: OIDC callback (provider redirects here after user authorizes)
+      tags: [Authentication]
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to frontend with token in URL fragment
+          headers:
+            Location:
+              schema:
+                type: string
+                example: "https://termone.example.com/#access_token=eyJ..."
+
+  /auth/logout:
+    post:
+      summary: Logout and invalidate current session
+      tags: [Authentication]
+      responses:
+        '200':
+          description: Logged out successfully
+
+  /auth/totp/setup:
+    post:
+      summary: Generate TOTP secret for 2FA setup
+      tags: [Authentication]
+      responses:
+        '200':
+          description: TOTP secret generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secret:
+                    type: string
+                    description: Base32-encoded secret (for QR code)
+                  qr_code_url:
+                    type: string
+                    description: URL to QR code image
+                  backup_codes:
+                    type: array
+                    items:
+                      type: string
+                    description: 10 backup codes for account recovery
+
+  /auth/totp/verify:
+    post:
+      summary: Verify TOTP code and activate 2FA
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: 6-digit TOTP code
+      responses:
+        '200':
+          description: 2FA activated successfully
+
+  # ====================
+  # Host Management Endpoints
+  # ====================
+
+  /hosts:
+    get:
+      summary: List all SSH hosts for current user
+      tags: [Hosts]
+      parameters:
+        - name: tags
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+          description: Filter by tags
+        - name: folder_path
+          in: query
+          schema:
+            type: string
+          description: Filter by folder path
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by name/hostname
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+      responses:
+        '200':
+          description: List of hosts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SSHHost'
+                  total:
+                    type: integer
+                  skip:
+                    type: integer
+                  limit:
+                    type: integer
+
+    post:
+      summary: Create new SSH host
+      tags: [Hosts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, hostname, auth_type]
+              properties:
+                name:
+                  type: string
+                hostname:
+                  type: string
+                ip_address:
+                  type: string
+                  nullable: true
+                port:
+                  type: integer
+                  default: 22
+                username:
+                  type: string
+                  default: root
+                auth_type:
+                  type: string
+                  enum: [password, key]
+                credential:
+                  type: string
+                  description: For password auth, plaintext password (sent over HTTPS only). For key auth, PEM-format private key
+                tags:
+                  type: array
+                  items:
+                    type: string
+                folder_path:
+                  type: string
+                  nullable: true
+                description:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: Host created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SSHHost'
+        '400':
+          description: Invalid input (e.g., invalid auth_type, duplicate name)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /hosts/{host_id}:
+    get:
+      summary: Get host details
+      tags: [Hosts]
+      parameters:
+        - name: host_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Host details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SSHHost'
+        '404':
+          description: Host not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      summary: Update host details (name, tags, folder, etc.)
+      tags: [Hosts]
+      parameters:
+        - name: host_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                port:
+                  type: integer
+                tags:
+                  type: array
+                  items:
+                    type: string
+                folder_path:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Host updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SSHHost'
+
+    delete:
+      summary: Delete SSH host
+      tags: [Hosts]
+      parameters:
+        - name: host_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Host deleted
+
+  /hosts/{host_id}/deploy-public-key:
+    post:
+      summary: Deploy current user's public SSH key to authorized_keys
+      tags: [Hosts]
+      parameters:
+        - name: host_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key_comment:
+                  type: string
+                  description: Comment/identifier for the key (e.g., 'user@desktop')
+      responses:
+        '200':
+          description: Key deployed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  public_key_fingerprint:
+                    type: string
+
+  # ====================
+  # Terminal (WebSocket) Endpoints
+  # ====================
+
+  /terminal/sessions/{host_id}:
+    post:
+      summary: Create terminal session and return session ID + WebSocket URL
+      tags: [Terminal]
+      parameters:
+        - name: host_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: Terminal session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id:
+                    type: string
+                    format: uuid
+                  websocket_url:
+                    type: string
+                    format: uri
+                    description: "wss://termone.example.com/ws/terminal/{session_id}"
+                  terminal:
+                    type: object
+                    properties:
+                      rows:
+                        type: integer
+                      cols:
+                        type: integer
+
+  /ws/terminal/{session_id}:
+    description: |
+      WebSocket endpoint for bidirectional terminal I/O streaming.
+
+      **Message Format (Client → Server)**:
+      - `{"type": "input", "data": "ls -la\n"}` - Send terminal input
+      - `{"type": "resize", "rows": 24, "cols": 80}` - Resize terminal
+      - `{"type": "theme", "value": "dracula"}` - Change theme (client-side only)
+
+      **Message Format (Server → Client)**:
+      - `{"type": "output", "data": "...terminal output..."}` - Terminal output
+      - `{"type": "error", "message": "SSH disconnected"}` - Error message
+      - `{"type": "close", "reason": "session_timeout"}` - Session closed
+
+  # ====================
+  # Stats (WebSocket) Endpoints
+  # ====================
+
+  /ws/stats/{host_id}:
+    description: |
+      WebSocket endpoint for real-time server statistics streaming.
+
+      Server sends every 5 seconds:
+      ```json
+      {
+        "timestamp": "2025-11-08T12:34:56Z",
+        "cpu": {"usage_percent": 45.2, "cores": 4},
+        "memory": {"used_mb": 4096, "total_mb": 8192, "usage_percent": 50},
+        "disk": [
+          {"mount": "/", "used_gb": 45, "total_gb": 100, "usage_percent": 45}
+        ],
+        "network": {"rx_bytes": 123456789, "tx_bytes": 987654321},
+        "uptime_seconds": 1234567,
+        "system_info": {
+          "os": "Ubuntu 22.04",
+          "kernel": "5.15.0-56-generic",
+          "hostname": "prod-db-01"
+        }
+      }
+      ```
+
+  # ====================
+  # File Manager (SFTP) Endpoints
+  # ====================
+
+  /files/{host_id}/list:
+    get:
+      summary: List files in directory (SFTP)
+      tags: [Files]
+      parameters:
+        - name: host_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: path
+          in: query
+          schema:
+            type: string
+            default: "/"
+      responses:
+        '200':
+          description: File listing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path:
+                    type: string
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        type:
+                          type: string
+                          enum: [file, directory]
+                        size:
+                          type: integer
+                        permissions:
+                          type: string
+                          description: "Unix permissions (e.g., 'rwxr-xr-x')"
+                        modified_at:
+                          type: string
+                          format: date-time
+
+  /files/{host_id}/upload:
+    post:
+      summary: Upload file to remote server (SFTP)
+      tags: [Files]
+      parameters:
+        - name: host_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: path
+          in: query
+          schema:
+            type: string
+            description: Target directory path
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  filename:
+                    type: string
+                  size:
+                    type: integer
+                  path:
+                    type: string
+
+  /files/{host_id}/download:
+    get:
+      summary: Download file from remote server (SFTP)
+      tags: [Files]
+      parameters:
+        - name: host_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  /files/{host_id}/edit:
+    get:
+      summary: Get file contents for editing
+      tags: [Files]
+      parameters:
+        - name: host_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File contents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path:
+                    type: string
+                  content:
+                    type: string
+                  encoding:
+                    type: string
+                    default: utf-8
+
+    post:
+      summary: Save edited file
+      tags: [Files]
+      parameters:
+        - name: host_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path, content]
+              properties:
+                path:
+                  type: string
+                content:
+                  type: string
+      responses:
+        '200':
+          description: File saved
+
+  # ====================
+  # SSH Tunnels Endpoints
+  # ====================
+
+  /tunnels:
+    get:
+      summary: List all tunnels for current user
+      tags: [Tunnels]
+      responses:
+        '200':
+          description: List of tunnels
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SSHTunnel'
+
+    post:
+      summary: Create new SSH tunnel
+      tags: [Tunnels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, host_id, tunnel_type, remote_port]
+              properties:
+                name:
+                  type: string
+                host_id:
+                  type: string
+                  format: uuid
+                tunnel_type:
+                  type: string
+                  enum: [local, remote]
+                local_address:
+                  type: string
+                  description: For local tunnels only (e.g., 127.0.0.1)
+                local_port:
+                  type: integer
+                  description: For local tunnels only
+                remote_address:
+                  type: string
+                remote_port:
+                  type: integer
+      responses:
+        '201':
+          description: Tunnel created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SSHTunnel'
+
+  /tunnels/{tunnel_id}:
+    delete:
+      summary: Delete tunnel
+      tags: [Tunnels]
+      parameters:
+        - name: tunnel_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Tunnel deleted
+
+  # ====================
+  # Command Snippets Endpoints
+  # ====================
+
+  /snippets:
+    get:
+      summary: List all command snippets for current user
+      tags: [Snippets]
+      responses:
+        '200':
+          description: List of snippets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommandSnippet'
+
+    post:
+      summary: Create new command snippet
+      tags: [Snippets]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, command]
+              properties:
+                name:
+                  type: string
+                command:
+                  type: string
+                description:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+                is_public:
+                  type: boolean
+      responses:
+        '201':
+          description: Snippet created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandSnippet'
+
+  /snippets/{snippet_id}:
+    patch:
+      summary: Update snippet
+      tags: [Snippets]
+      parameters:
+        - name: snippet_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                command:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Snippet updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandSnippet'
+
+    delete:
+      summary: Delete snippet
+      tags: [Snippets]
+      parameters:
+        - name: snippet_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Snippet deleted
+
+  # ====================
+  # Admin Endpoints
+  # ====================
+
+  /admin/users:
+    get:
+      summary: List all users (admin only)
+      tags: [Admin]
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+
+  /admin/sessions:
+    get:
+      summary: List all active sessions (admin only)
+      tags: [Admin]
+      responses:
+        '200':
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SSHSession'
+
+  /admin/sessions/{session_id}:
+    delete:
+      summary: Terminate user session (admin only)
+      tags: [Admin]
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Session terminated
+
+  /admin/settings/oidc-providers:
+    get:
+      summary: Get configured OIDC providers (admin only)
+      tags: [Admin]
+      responses:
+        '200':
+          description: List of OIDC providers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        provider:
+                          type: string
+                        enabled:
+                          type: boolean
+                        discovery_url:
+                          type: string
+
+    post:
+      summary: Add/update OIDC provider (admin only)
+      tags: [Admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, client_id, client_secret, discovery_url]
+              properties:
+                name:
+                  type: string
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+                discovery_url:
+                  type: string
+                enabled:
+                  type: boolean
+      responses:
+        '201':
+          description: Provider added
+        '200':
+          description: Provider updated
+        '202':
+          description: Configuration saved. Server restart required to activate.
+
+  /health:
+    get:
+      summary: Health check
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  database:
+                    type: string
+                    enum: [connected, disconnected]
+                  version:
+                    type: string
