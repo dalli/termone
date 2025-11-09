@@ -7,7 +7,7 @@
  * - Snippet execution and broadcasting
  */
 
-import { useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import api from '../services/api';
 
 export interface Snippet {
@@ -64,8 +64,8 @@ export interface UseSnippetsReturn {
   createSnippet: (request: SnippetCreateRequest) => Promise<Snippet>;
   updateSnippet: (snippetId: string, request: SnippetUpdateRequest) => Promise<Snippet>;
   deleteSnippet: (snippetId: string) => Promise<void>;
-  executeSnippet: (snippetId: string, sessionId: string) => Promise<ExecutionResult>;
-  broadcastSnippet: (snippetId: string, sessionIds: string[]) => Promise<any>;
+  executeSnippet: (snippetId: string, options: { session_id: string; target_host_id?: string }) => Promise<ExecutionResult>;
+  broadcastSnippet: (snippetId: string, options: { session_ids: string[]; target_host_id?: string }) => Promise<any>;
   selectSnippet: (snippet: Snippet | null) => void;
   clearError: () => void;
 }
@@ -185,13 +185,13 @@ export function useSnippets(): UseSnippetsReturn {
 
   // Execute snippet
   const executeSnippet = useCallback(
-    async (snippetId: string, sessionId: string): Promise<ExecutionResult> => {
+    async (snippetId: string, options: { session_id: string; target_host_id?: string }): Promise<ExecutionResult> => {
       setIsLoading(true);
       setError(null);
       try {
         const response = await api.post<ExecutionResult>(
           `/snippets/${snippetId}/execute`,
-          { session_id: sessionId }
+          options
         );
         return response.data;
       } catch (err: any) {
@@ -207,13 +207,13 @@ export function useSnippets(): UseSnippetsReturn {
 
   // Broadcast snippet
   const broadcastSnippet = useCallback(
-    async (snippetId: string, sessionIds: string[]) => {
+    async (snippetId: string, options: { session_ids: string[]; target_host_id?: string }) => {
       setIsLoading(true);
       setError(null);
       try {
         const response = await api.post(
           `/snippets/${snippetId}/broadcast`,
-          { session_ids: sessionIds }
+          options
         );
         return response.data;
       } catch (err: any) {

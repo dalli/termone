@@ -35,6 +35,7 @@ from src.schemas.files import (
 )
 from src.services.audit_service import AuditService
 from src.services.credential_service import CredentialService
+from src.services.encryption import get_encryption_service
 from src.services.file_service import FileService
 from src.services.host_service import HostService
 
@@ -43,7 +44,8 @@ router = APIRouter(prefix="/files", tags=["files"])
 
 
 # Service instances
-credential_service = CredentialService()
+encryption_service = get_encryption_service()
+credential_service = CredentialService(encryption_service)
 file_service = FileService(credential_service)
 host_service = HostService()
 audit_service = AuditService()

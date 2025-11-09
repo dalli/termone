@@ -29,7 +29,10 @@ from src.services.credential_service import CredentialService
 router = APIRouter(prefix="/tunnels", tags=["tunnels"])
 
 # Service instances (initialized at startup)
-credential_service = CredentialService()
+from src.services.encryption import get_encryption_service
+
+encryption_service = get_encryption_service()
+credential_service = CredentialService(encryption_service)
 tunnel_service = TunnelService(credential_service)
 tunnel_manager = TunnelManager(tunnel_service)
 host_service = HostService()

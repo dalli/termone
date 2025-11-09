@@ -2,7 +2,7 @@
  * SnippetExecutor component for executing command snippets in terminal sessions.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Snippet } from '../../hooks/useSnippets';
 
 export interface TerminalSession {
@@ -76,7 +76,7 @@ export const SnippetExecutor: React.FC<SnippetExecutorProps> = ({
     } else {
       setSelectedSessions([
         ...selectedSessions,
-        ...hostSessions.filter((s) => !selectedSessions.includes(s.id)),
+        ...hostSessions.filter((s) => !selectedSessions.includes(s.id)).map((s) => s.id),
       ]);
     }
   };
@@ -196,9 +196,7 @@ export const SnippetExecutor: React.FC<SnippetExecutorProps> = ({
                       onChange={() => handleSelectAllForHost(hostName)}
                       disabled={isLoading || executionMode === 'single'}
                       className="w-4 h-4 rounded"
-                      indeterminate={
-                        someHostSessionsSelected && !allHostSessionsSelected
-                      }
+                      {...({ indeterminate: someHostSessionsSelected && !allHostSessionsSelected } as any)}
                     />
                     <span className="text-sm font-semibold">{hostName}</span>
                   </label>

@@ -69,7 +69,7 @@ export default function HostsPage() {
         {/* Search and Filter Section */}
         <HostSearch
           onSearch={(query) => {
-            setSearchFilters(prev => ({ ...prev, search: query }));
+            setSearchFilters((prev: any) => ({ ...prev, search: query }));
           }}
           onFilterChange={(filters) => {
             setSearchFilters(filters);

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from src.models.user import User
-from src.models.host import Host
+from src.models.infrastructure import SSHHost as Host
 from src.schemas.admin import (
     UserListItem,
     UserListResponse,

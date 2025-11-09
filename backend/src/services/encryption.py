@@ -5,7 +5,7 @@ from typing import Optional
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import os
 
 from src.config import get_settings
@@ -28,8 +28,8 @@ class EncryptionService:
 
             # Ensure key is 32 bytes (256 bits)
             if len(self.master_key) < 32:
-                # Pad with PBKDF2 if too short
-                kdf = PBKDF2(
+                # Pad with PBKDF2HMAC if too short
+                kdf = PBKDF2HMAC(
                     algorithm=hashes.SHA256(),
                     length=32,
                     salt=b"termone_salt",

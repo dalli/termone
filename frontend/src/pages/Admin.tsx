@@ -101,8 +101,12 @@ export const AdminPage: React.FC = () => {
               isLoading={providersLoading}
               error={providersError}
               onRefresh={listProviders}
-              onCreate={createProvider}
-              onUpdate={updateProvider}
+              onCreate={async (data: any) => {
+                await createProvider(data);
+              }}
+              onUpdate={async (providerId: string, data: any) => {
+                await updateProvider(providerId, data);
+              }}
               onDelete={deleteProvider}
             />
           )}

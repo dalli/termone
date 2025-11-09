@@ -17,6 +17,7 @@ interface LoginResponse {
     username: string;
     email: string;
     is_admin: boolean;
+    is_active?: boolean;
   };
 }
 

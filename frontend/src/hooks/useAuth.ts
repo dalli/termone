@@ -48,7 +48,7 @@ export function useAuth(): UseAuthReturn {
 
       try {
         const response = await authService.login({ username, password });
-        setUser(response.user);
+        setUser({ ...response.user, is_active: response.user.is_active ?? true });
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Login failed';
         setError(errorMessage);

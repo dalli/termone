@@ -109,7 +109,7 @@ export const SnippetsPage: React.FC = () => {
     try {
       await executeSnippet(selectedSnippet.id, {
         session_id: sessionId,
-        target_host_id: targetHostId,
+        target_host_id: targetHostId ?? undefined,
       });
       setSuccessMessage('Snippet execution started');
       setMode('library');
@@ -130,7 +130,7 @@ export const SnippetsPage: React.FC = () => {
     try {
       await broadcastSnippet(selectedSnippet.id, {
         session_ids: sessionIds,
-        target_host_id: targetHostId,
+        target_host_id: targetHostId ?? undefined,
       });
       setSuccessMessage(
         `Snippet broadcasted to ${sessionIds.length} session(s)`
@@ -239,7 +239,7 @@ export const SnippetsPage: React.FC = () => {
               setFormError(null);
             }}
             isLoading={formLoading}
-            error={formError}
+            error={formError ?? undefined}
           />
         )}
 
@@ -254,7 +254,7 @@ export const SnippetsPage: React.FC = () => {
               setFormError(null);
             }}
             isLoading={formLoading}
-            error={formError}
+            error={formError ?? undefined}
           />
         )}
 
@@ -271,7 +271,7 @@ export const SnippetsPage: React.FC = () => {
               setFormError(null);
             }}
             isLoading={formLoading}
-            error={formError}
+            error={formError ?? undefined}
           />
         )}
       </div>

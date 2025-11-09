@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.auth import get_current_user
+from src.api.dependencies import get_current_user, get_db
 from src.models.user import User
 from src.services.admin_service import AdminService
 from src.schemas.admin import (
@@ -14,7 +14,6 @@ from src.schemas.admin import (
     OIDCProviderListResponse,
     OIDCProviderResponse,
 )
-from src.core.database import get_db
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 

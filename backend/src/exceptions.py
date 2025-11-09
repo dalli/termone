@@ -25,6 +25,13 @@ class AuthorizationException(TermoneException):
         super().__init__(message, "UNAUTHORIZED", 403)
 
 
+class PermissionException(AuthorizationException):
+    """Alias for AuthorizationException for backward compatibility."""
+    
+    def __init__(self, message: str = "Permission denied"):
+        super().__init__(message)
+
+
 class ValidationException(TermoneException):
     """Raised when input validation fails."""
 
@@ -39,6 +46,13 @@ class ResourceNotFoundException(TermoneException):
     def __init__(self, resource_type: str, resource_id: str):
         message = f"{resource_type} with ID {resource_id} not found"
         super().__init__(message, "NOT_FOUND", 404)
+
+
+class NotFoundException(ResourceNotFoundException):
+    """Alias for ResourceNotFoundException for backward compatibility."""
+    
+    def __init__(self, resource: str, identifier: str):
+        super().__init__(resource, identifier)
 
 
 class ConflictException(TermoneException):

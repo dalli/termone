@@ -3,7 +3,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { useFiles } from '../../hooks/useFiles';
+import { useFiles, FileInfo } from '../../hooks/useFiles';
 import {
   formatBytes,
   formatModifiedTime,
@@ -69,7 +69,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
     navigateTo(path);
   };
 
-  const handleDoubleClick = (entry) => {
+  const handleDoubleClick = (entry: FileInfo) => {
     if (entry.type === 'directory') {
       const newPath = joinPath(currentPath, entry.name);
       handleNavigate(newPath);
