@@ -100,7 +100,7 @@ nginx/ssl/*.crt
 nginx/ssl/*.csr
 
 # Docker
-.dockerignore
+# .dockerignore files should be committed
 
 # Database
 *.db
